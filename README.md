@@ -2,6 +2,8 @@
 
 给 **Codex / ChatGPT Work** 用的 Agent Skill：读一份民事判决书，一次生成整套**申请强制执行材料**（Word）。
 
+> GitHub 仓库名不支持中文，仓库地址用拼音 `xiaoye-shenqing-zhixing-skill`；技能中文名即「小野的申请执行skill」。
+
 ## 能做什么
 
 - 从判决书提取法院、案号、案由、当事人、判项、诉讼费/保全费、生效日
@@ -27,7 +29,7 @@
 ## 安装
 
 ```bash
-git clone https://github.com/xiaoye0714/小野的申请执行skill.git
+git clone https://github.com/xiaoye0714/xiaoye-shenqing-zhixing-skill.git
 ```
 
 把内容复制到 skills 目录：
