@@ -789,7 +789,8 @@ def build_05():
     set_segments(ps[7], [("账           号：", None, None), (" " * 30, True, None)])
     set_sz(ps[7].runs[1], 16)
     set_segments(ps[8], [("户           名：", None, None),
-                         (" " * 5 + APPLICANT + " " * 14, True, None)])
+                         (" " * max(1, 17 - len(APPLICANT)) + APPLICANT
+                          + " " * max(1, 17 - len(APPLICANT)), True, None)])
     set_sz(ps[8].runs[1], 14)
     normalize(doc)
     save(doc, "05_收款帐户确认书_%s.docx" % APPLICANT)
