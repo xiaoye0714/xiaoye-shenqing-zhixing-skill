@@ -52,17 +52,19 @@ ITEMS = [
 TOTAL = "0.00"
 
 LAWYER = "示例律师"
-ASSIST = "高凡竣"
+ASSIST = "示例助理"
 FIRM = "示例律师事务所"
 FIRM_ADDR = "（律所地址）"
 FIRM_TEL = "0000-0000000"
 MOBILE = "13800000000"
+LAWYER_ID = "000000000000000000"               # 11 送达确认书代理人身份号码
 
 # 主体类型：自然人申请执行人填下面两行；公司填 COMPANY 那组
 APPLICANT_ADDR = ""
 APPLICANT_ID = ""
 APPLICANT_MOBILE = ""                         # 申请执行人本人手机号：11 送达确认书当事人栏必填，不掌握就问用户
 APPLICANT_IS_COMPANY = True
+APPLICANT_IS_INDIVIDUAL_BUSINESS = False      # 个体工商户：使用负责人身份证明书
 APPLICANT_CODE = ""
 APPLICANT_REP = ""
 APPLICANT_REP_TITLE = "总经理"
@@ -294,6 +296,28 @@ def put_lines(cell, lines):
         p._p.append(r)
 
 
+def put_rich_lines(cell, lines):
+    """向单元格写多行富文本；每行可为字符串或 (文本, 下划线, 加粗) 片段列表。"""
+    p = cell.paragraphs[0]
+    for extra in cell.paragraphs[1:]:
+        extra._p.getparent().remove(extra._p)
+    runs = p._p.findall(qn("w:r"))
+    assert runs, "空单元格无法取得字体模板: %r" % cell.text
+    template_run = copy.deepcopy(runs[0])
+    tmpl_rpr = copy.deepcopy(runs[0].find(qn("w:rPr")))
+    for r in runs:
+        p._p.remove(r)
+    for i, line in enumerate(lines):
+        if i:
+            br = OxmlElement("w:r")
+            br.append(copy.deepcopy(tmpl_rpr))
+            br.append(OxmlElement("w:br"))
+            p._p.append(br)
+        segments = [(line, None, None)] if isinstance(line, str) else line
+        for text, u, b in segments:
+            p._p.append(make_run(template_run, text, u, b))
+
+
 def normalize(doc):
     roots = [doc.element.body]
     for s in doc.sections:
@@ -458,7 +482,9 @@ def split_def(blk):
             birth = s.replace("出生", "").replace("生", "")
     addr = ""
     for s in parts:
-        if s.startswith("住"):
+        if s.startswith("住所地"):
+            addr = s[len("住所地"):]
+        elif s.startswith("住"):
             addr = s[1:]
     idno = ""
     for s in parts:
@@ -691,8 +717,42 @@ def build_02():
     save(doc, "02_执行授权委托书_%s.docx" % APPLICANT)
 
 
-# ---------- 04 法定代表人身份证明书（仅公司申请执行人） ----------
+# ---------- 04 法定代表人／负责人身份证明书 ----------
 def build_04():
+    if APPLICANT_IS_INDIVIDUAL_BUSINESS:
+        doc = load("05负责人身份证明书(个体户用这个）.docx")
+        p = find_para(
+            doc,
+            lambda t: "在我店担任" in t or "在我厂担任" in t,
+            "负责人姓名行",
+        )
+        name_hit = title_hit = seen_title_marker = False
+        for r in p.runs:
+            if "在我店担任" in r.text or "在我厂担任" in r.text:
+                seen_title_marker = True
+            elif seen_title_marker and not title_hit and r.text.strip():
+                r.text = "经营者"
+                title_hit = True
+            elif not seen_title_marker and not name_hit and r.text.strip():
+                r.text = APPLICANT_REP
+                name_hit = True
+        assert name_hit and title_hit, "未找到负责人身份证明书样例字段"
+
+        nonempty = [q for q in doc.paragraphs if q.text.strip()]
+        date_i = next(
+            i for i, q in enumerate(nonempty)
+            if q.text.strip().startswith("日期") and "年" in q.text and "月" in q.text
+        )
+        comp = nonempty[date_i - 1]
+        for r in reversed(comp.runs):
+            if r.text.strip():
+                leading = r.text[: len(r.text) - len(r.text.lstrip(" "))]
+                r.text = leading + APPLICANT
+                break
+        normalize(doc)
+        save(doc, "04_负责人身份证明书_%s.docx" % APPLICANT)
+        return
+
     doc = load("04法定代表人身份证明书(公司用这个).docx")
     p = find_para(doc, lambda t: "在我公司担任" in t, "姓名行")
     hit = False
@@ -788,9 +848,10 @@ def build_05():
     set_sz(ps[6].runs[1], 16)
     set_segments(ps[7], [("账           号：", None, None), (" " * 30, True, None)])
     set_sz(ps[7].runs[1], 16)
+    # 14 磅下每侧空格 = 17 - 名称字数，使户名下划线右缘与开户行、账号齐平。
+    pad = max(1, 17 - len(APPLICANT))
     set_segments(ps[8], [("户           名：", None, None),
-                         (" " * max(1, 17 - len(APPLICANT)) + APPLICANT
-                          + " " * max(1, 17 - len(APPLICANT)), True, None)])
+                         (" " * pad + APPLICANT + " " * pad, True, None)])
     set_sz(ps[8].runs[1], 14)
     normalize(doc)
     save(doc, "05_收款帐户确认书_%s.docx" % APPLICANT)
@@ -863,7 +924,8 @@ def build_10():
     fb = cell_rpr(cells[1][1])
 
     def put(c, s):
-        set_cell(c, s, cell_rpr(c) or fb)
+        donor = cell_rpr(c)
+        set_cell(c, s, donor if donor is not None else fb)
 
     put(cells[1][1], CASE_NO)
     put(cells[1][3], APPLICANT)
@@ -875,8 +937,9 @@ def build_10():
         put(cells[b2][2], idno)
         tick_first_box(cells[bn][0])
         if "统一社会信用代码" in blk:
-            # 被执行人是单位/个体户：没有户籍所在地，模板预勾的"户籍"要清掉
+            # 单位被执行人没有户籍所在地，改填登记／经常联系地址。
             untick_all(cells[blive][2])
+            put(cells[blive][2], "☑经常居住地址：" + addr)
     for i in range(len(DEF_BLOCKS), len(blocks)):
         bn, b1, b2, blive = blocks[i]
         untick_all(cells[bn][0])
@@ -894,7 +957,8 @@ def build_11():
     fb = cell_rpr(cells[2][2])
 
     def put(c, s):
-        set_cell(c, s, cell_rpr(c) or fb)
+        donor = cell_rpr(c)
+        set_cell(c, s, donor if donor is not None else fb)
 
     addr = APPLICANT_ADDR
     if APPLICANT_IS_COMPANY:
@@ -903,20 +967,31 @@ def build_11():
                 addr = s.split("住所地")[-1].lstrip("：: ")
     put(cells[0][3], CAUSE)
     put(cells[2][2], APPLICANT)
-    put(cells[3][2], "□同意手机短信送达，手机号码：         □同意微信送达，微信号：              ")
-    # 当事人那行的手机号与身份证号必须填（2026-10-15 用户纠错）：自然人填本人手机号＋身份证号，
-    # 公司填经办人手机号、身份证号留空；确实不掌握就在汇报里点出来，别默默留白。
-    put_lines(cells[4][2], [
-        "□同意采用人民法院在线服务网（可通过微信小程序“人民法院在线服务”登录）等诉讼服务平台电子送达",
-        "手机号码：   " + APPLICANT_MOBILE + "    公民身份号码：  " + APPLICANT_ID + "              ",
+    put(cells[3][2], "☑同意手机短信送达，手机号码：         □同意微信送达，微信号：              ")
+    # 电子送达手机号和身份号码必须填写并加下划线；企业身份号码栏填统一社会信用代码。
+    applicant_econtact = MOBILE if APPLICANT_IS_COMPANY else APPLICANT_MOBILE
+    applicant_identity = APPLICANT_CODE if APPLICANT_IS_COMPANY else APPLICANT_ID
+    if not applicant_econtact.strip():
+        raise ValueError("11表当事人电子送达手机号为空，请补充 APPLICANT_MOBILE/经办人手机号")
+    if not applicant_identity.strip():
+        raise ValueError("11表当事人身份号码为空：企业请补充 APPLICANT_CODE，自然人请补充 APPLICANT_ID")
+    put_rich_lines(cells[4][2], [
+        "☑同意采用人民法院在线服务网（可通过微信小程序“人民法院在线服务”登录）等诉讼服务平台电子送达",
+        [("手机号码：", None, None), ("  " + applicant_econtact + "  ", True, None),
+         ("公民身份号码：", None, None), ("  " + applicant_identity + "  ", True, None)],
     ])
     put(cells[5][3], addr)
     put(cells[6][3], (" " + APPLICANT_MOBILE + " ") if APPLICANT_MOBILE else "")
     put(cells[7][2], LAWYER)
-    put(cells[8][2], "□同意手机短信送达，手机号码：  " + MOBILE + "    □同意微信送达，微信号：              ")
-    put_lines(cells[9][2], [
-        "□同意采用人民法院在线服务网（可通过微信小程序“人民法院在线服务”登录）等诉讼服务平台电子送达",
-        "手机号码：    " + MOBILE + "    公民身份号码：  000000000000000000              ",
+    put_rich_lines(cells[8][2], [[
+        ("☑同意手机短信送达，手机号码：", None, None),
+        ("  " + MOBILE + "  ", True, None),
+        ("□同意微信送达，微信号：              ", None, None),
+    ]])
+    put_rich_lines(cells[9][2], [
+        "☑同意采用人民法院在线服务网（可通过微信小程序“人民法院在线服务”登录）等诉讼服务平台电子送达",
+        [("手机号码：", None, None), ("  " + MOBILE + "  ", True, None),
+         ("公民身份号码：", None, None), ("  " + LAWYER_ID + "  ", True, None)],
     ])
     put(cells[10][3], FIRM_ADDR)
     put(cells[11][3], " " + MOBILE + "  ")

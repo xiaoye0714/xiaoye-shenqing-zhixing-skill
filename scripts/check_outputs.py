@@ -8,7 +8,7 @@
 3. 颜色/高亮：非黑色字体、文字高亮；
 4. 串案：出现多个案号，或命中了传入的旧案关键词；
 5. 落款：“暂合计”与“此致”之间有多余空段落；
-6. 专项版式：02 委托事项的被执行人名称、案由下划线是否完整，05 户名前空格是否为 5 个。
+6. 专项版式：02 委托事项下划线、05 户名横线边界、11 电子送达号码及下划线。
 """
 
 import re
@@ -42,6 +42,31 @@ def runs_of(doc):
                 for p in c.paragraphs:
                     for r in p.runs:
                         yield p, r
+
+
+def row_cells(row):
+    seen, out = [], []
+    for c in row.cells:
+        if id(c._tc) in [id(x._tc) for x in seen]:
+            continue
+        seen.append(c)
+        out.append(c)
+    return out
+
+
+def underlined_groups(cell):
+    groups = []
+    for p in cell.paragraphs:
+        current = []
+        for r in p.runs:
+            if r.underline:
+                current.append(r.text)
+            elif current:
+                groups.append("".join(current))
+                current = []
+        if current:
+            groups.append("".join(current))
+    return groups
 
 
 def font_ok(run):
@@ -161,8 +186,54 @@ def check(path, avoid):
         else:
             tail = p.text.split("：", 1)[1] if "：" in p.text else ""
             lead = len(tail) - len(tail.lstrip(" "))
-            if lead != 5:
-                msgs.append(f"05户名前空格应为5个，当前为{lead}个")
+            name = tail.strip()
+            trail = len(tail) - len(tail.rstrip(" "))
+            expected = max(1, 17 - len(name))
+            if lead != expected or trail != expected:
+                msgs.append(
+                    f"05户名两侧空格应为{expected}个，当前为{lead}/{trail}个"
+                )
+
+    if path.name.startswith("11_"):
+        t = d.tables[0]
+        rc = [row_cells(row) for row in t.rows]
+
+        def check_econtact(row_i, label, require_identity=False, require_sms=False, require_online=False):
+            cell = rc[row_i][2]
+            text = cell.text.replace("\n", "")
+            groups = underlined_groups(cell)
+            if require_sms and "☑同意手机短信送达" not in text:
+                msgs.append(f"11表{label}短信送达未勾选")
+            if require_online and "☑同意采用人民法院在线服务网" not in text:
+                msgs.append(f"11表{label}在线服务送达未勾选")
+            if "手机号码：" not in text:
+                msgs.append(f"11表{label}缺少手机号码栏")
+                return
+            phone = text.split("手机号码：", 1)[1].split("公民身份号码：", 1)[0]
+            phone = phone.split("□同意微信送达", 1)[0].strip()
+            if not phone:
+                msgs.append(f"11表{label}电子送达手机号为空")
+            elif not any(phone in g for g in groups):
+                msgs.append(f"11表{label}电子送达手机号缺少下划线")
+            if require_identity:
+                if "公民身份号码：" not in text:
+                    msgs.append(f"11表{label}缺少身份号码栏")
+                    return
+                identity = text.split("公民身份号码：", 1)[1].strip()
+                if not identity:
+                    msgs.append(f"11表{label}身份号码/统一社会信用代码为空")
+                elif not any(identity in g for g in groups):
+                    msgs.append(f"11表{label}身份号码/统一社会信用代码缺少下划线")
+
+        if "☑同意手机短信送达" not in rc[3][2].text:
+            msgs.append("11表当事人短信送达未勾选")
+        if "□同意微信送达" not in rc[3][2].text:
+            msgs.append("11表当事人微信送达应保持未勾选")
+        check_econtact(4, "当事人", require_identity=True, require_online=True)
+        check_econtact(8, "诉讼代理人", require_sms=True)
+        if "□同意微信送达" not in rc[8][2].text:
+            msgs.append("11表诉讼代理人微信送达应保持未勾选")
+        check_econtact(9, "诉讼代理人", require_identity=True, require_online=True)
 
     with zipfile.ZipFile(path) as z:
         xml = z.read("word/document.xml").decode("utf-8", "ignore")
