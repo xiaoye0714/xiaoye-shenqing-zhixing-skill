@@ -197,6 +197,8 @@ def check(path, avoid):
     if path.name.startswith("11_"):
         t = d.tables[0]
         rc = [row_cells(row) for row in t.rows]
+        if not rc[0][1].text.strip():
+            msgs.append("11表首行案号为空")
 
         def check_econtact(row_i, label, require_identity=False, require_sms=False, require_online=False):
             cell = rc[row_i][2]
@@ -235,6 +237,37 @@ def check(path, avoid):
             msgs.append("11表诉讼代理人微信送达应保持未勾选")
         check_econtact(9, "诉讼代理人", require_identity=True, require_online=True)
 
+    if path.name.startswith("10_"):
+        for table in d.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for value in cell.text.splitlines():
+                        if re.search(r"[0-9A-Z]{18}[。；;]\s*$", value.strip()):
+                            msgs.append("10表统一社会信用代码后残留标点：" + value.strip())
+                            break
+
+    if path.name.startswith("03_撤销暨变更授权委托书"):
+        ps = d.paragraphs
+        for heading in ("变更后的受委托人一", "变更后的受委托人二"):
+            hi = next((i for i, p in enumerate(ps) if p.text.startswith(heading)), None)
+            if hi is None:
+                msgs.append("03表" + heading + "结构不完整")
+                continue
+            work = next((p for p in ps[hi + 1:] if p.text.startswith("工作单位：")), None)
+            phone = next((p for p in ps[hi + 1:] if p.text.startswith("联系电话：")), None)
+            if work is None or phone is None:
+                msgs.append("03表" + heading + "缺少工作单位或联系电话栏")
+                continue
+            unit_gap = work.text.split("工作单位：广东", 1)[-1].split("律师事务所", 1)[0].strip(" \u3000")
+            title_gap = work.text.split("职务：", 1)[-1].strip(" \u3000")
+            phone_gap = phone.text.split("联系电话：", 1)[-1].strip(" \u3000")
+            if unit_gap or title_gap or phone_gap:
+                msgs.append("03表" + heading + "的单位、职务或联系电话未留空")
+            for p in (work, phone):
+                if not any(r.underline and not r.text.strip(" \u3000") for r in p.runs):
+                    msgs.append("03表" + heading + "空白下划线缺失")
+                    break
+
     with zipfile.ZipFile(path) as z:
         xml = z.read("word/document.xml").decode("utf-8", "ignore")
     text = re.sub(r"<[^>]+>", "", xml)
@@ -267,6 +300,9 @@ if __name__ == "__main__":
     )
     print(f"检查目录：{folder}")
     bad = 0
+    if not any(f.name.startswith("03_撤销暨变更授权委托书") for f in files):
+        print("  缺少    03_撤销暨变更授权委托书_申请人.docx（所有法院均须提交）")
+        bad += 1
     for f in files:
         try:
             msgs, notes = check(f, avoid)

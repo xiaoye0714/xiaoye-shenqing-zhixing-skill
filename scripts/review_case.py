@@ -66,6 +66,15 @@ def page_texts(pdf):
         return [(pg.extract_text() or "") for pg in doc.pages]
 
 
+def page_body_bottom_ratio(pdf, page_index):
+    import pdfplumber
+    with pdfplumber.open(pdf) as doc:
+        page = doc.pages[page_index]
+        cutoff = page.height * 0.94  # 排除页脚页码
+        bottom = max((c["bottom"] for c in page.chars if c["bottom"] < cutoff), default=0.0)
+        return bottom / page.height if page.height else 0.0
+
+
 def doc_texts(docx):
     from docx import Document
     d = Document(docx)
@@ -120,6 +129,13 @@ def main():
                             notes.append("[!] 01落款未在末页")
                         elif not last_is_sign:
                             notes.append("[!] 01落款未独立成末页")
+                        else:
+                            body_ratio = page_body_bottom_ratio(pdf, p_cizhi - 1)
+                            if body_ratio < 0.75:
+                                notes.append(
+                                    "[!] 01正文末页空白过大(正文底部%.0f%%)，请调行距"
+                                    % (body_ratio * 100)
+                                )
             para = [t for t in doc_texts(docx) if len(norm(t)) >= 30]
             low = sorted((shingle_ratio(t, flat), t) for t in para)
             hard = [(r, t) for r, t in low if r < 0.5]

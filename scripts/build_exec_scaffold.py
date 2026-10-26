@@ -493,7 +493,7 @@ def split_def(blk):
         if "统一社会信用代码" in s:
             idno = s.replace("统一社会信用代码", "").strip("。 ")
     # 公司/个体户整段里“统一社会信用代码…；法定代表人：某某”连写时，会把法代一起带进
-    # 10 表的证件号格（2026-10-19 合喜案踩过），这里在第一个分隔符处截断。
+    # 10 表的证件号格（2026-10-19 某公司案踩过），这里在第一个分隔符处截断。
     for sep in ("；", ";", "法定代表人"):
         idno = idno.split(sep)[0].strip()
     return name, sex, birth, addr, idno
@@ -717,6 +717,32 @@ def build_02():
     save(doc, "02_执行授权委托书_%s.docx" % APPLICANT)
 
 
+# ---------- 03 撤销暨变更授权委托书（所有法院、所有案件默认输出） ----------
+def build_03():
+    skill_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    template = os.path.join(
+        skill_root, "assets", "templates", "03撤销暨变更授权委托书_空白模板.docx"
+    )
+    with open(template, "rb") as f:
+        doc = Document(io.BytesIO(f.read()))
+    ps = doc.paragraphs
+    set_segments(ps[1], [(APPLICANT_BLOCK.replace("申请执行人：", "委托人：", 1), None, None)])
+    set_segments(ps[2], [
+        ("在我方与", None, None),
+        (defendant_names(), True, None),
+        ("之间", None, None),
+        (CAUSE, True, None),
+        ("申请强制执行一案中，现撤销对原受托人的授权委托，变更以下受委托人为我方诉讼代理人。", None, None),
+    ])
+    set_segments(ps[10], [
+        ("特别授权。代为申请执行，代为提起执行申请、承认、放弃、变更执行请求，进行和解、调解，签收法律文书等。", None, None)
+    ])
+    set_segments(ps[12], [("委托人：", None, None), ("\u3000" * 20, True, None)])
+    set_segments(ps[14], [("               年      月      日   ", None, None)])
+    normalize(doc)
+    save(doc, "03_撤销暨变更授权委托书_%s.docx" % APPLICANT)
+
+
 # ---------- 04 法定代表人／负责人身份证明书 ----------
 def build_04():
     if APPLICANT_IS_INDIVIDUAL_BUSINESS:
@@ -761,6 +787,12 @@ def build_04():
             r.text = APPLICANT_REP
             hit = True
     assert hit, "未找到姓名 run"
+    title_hit = False
+    for r in p.runs:
+        if "总经理" in r.text:
+            r.text = r.text.replace("总经理", APPLICANT_REP_TITLE)
+            title_hit = True
+    assert title_hit, "未找到法定代表人职务 run"
     comp = find_para(doc, lambda t: "年" in t and "月" in t and "日" in t, "落款行")
     for r in comp.runs:
         if "公司" in r.text:
@@ -965,6 +997,7 @@ def build_11():
         for s in APPLICANT_BLOCK.split("，"):
             if s.startswith("住所地") or s.startswith("申请执行人：") and "住所地" in s:
                 addr = s.split("住所地")[-1].lstrip("：: ")
+    put(cells[0][1], CASE_NO)
     put(cells[0][3], CAUSE)
     put(cells[2][2], APPLICANT)
     put(cells[3][2], "☑同意手机短信送达，手机号码：         □同意微信送达，微信号：              ")
@@ -1017,7 +1050,7 @@ if __name__ == "__main__":
     if not os.path.exists(target):
         shutil.copy2(JUDGMENT, target)
         print("copied judgment")
-    todo = [build_01, build_02, build_05, build_07, build_08, build_09, build_10, build_11]
+    todo = [build_01, build_02, build_03, build_05, build_07, build_08, build_09, build_10, build_11]
     if APPLICANT_IS_COMPANY:
         todo.insert(2, build_04)
     if RISK_NOTICE:
