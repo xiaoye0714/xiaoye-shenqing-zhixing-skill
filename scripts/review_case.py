@@ -132,10 +132,7 @@ def main():
                         else:
                             body_ratio = page_body_bottom_ratio(pdf, p_cizhi - 1)
                             if body_ratio < 0.75:
-                                notes.append(
-                                    "[!] 01正文末页空白过大(正文底部%.0f%%)，请调行距"
-                                    % (body_ratio * 100)
-                                )
+                                notes.append("[!] 01正文末页空白过大(正文底部%.0f%%)，请调行距" % (body_ratio * 100))
             para = [t for t in doc_texts(docx) if len(norm(t)) >= 30]
             low = sorted((shingle_ratio(t, flat), t) for t in para)
             hard = [(r, t) for r, t in low if r < 0.5]

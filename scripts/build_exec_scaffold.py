@@ -8,8 +8,8 @@
 4. 跑 review_case.py 复核（已内含交付前自检），只有报 [!] 的才渲染 PNG 看图。
 
 约定：
-- 要素式默认不生成，用户明确要时才把 WITH_ELEMENT 置 True；
-- 定位段落一律按内容锚点，不按下标（模板会被换成旧样本/样本那种已填样本）；
+- 深圳市法院自动生成要素式；其他地区用户明确要求时才把 WITH_ELEMENT 置 True；
+- 定位段落一律按内容锚点，不按下标（模板会被换成天枢/中挺那种已填样本）；
 - 落款"申请执行人："必须完全匹配，不能用 startswith（会命中首部当事人行）；
 - 删多余的请求项段落从末尾往前删；
 - 写盘前用 open(path,'r+b') 试开目标文件，确认没被 WPS 占用。
@@ -28,13 +28,14 @@ from docx.oxml.ns import qn
 from docx.text.paragraph import Paragraph
 
 # ================= 案件数据（只改这一块） =================
-TPL = r"C:\你的路径\执行申请模板"
-OUT = r"C:\Users\liyeye\Desktop\20261015某某诉某某某买卖合同纠纷（准备执行）"
-JUDGMENT = r"C:\Users\liyeye\Desktop\判决书.pdf"
+TPL = r"<YOUR_TEMPLATE_DIR>"
+SKILL_DIR = r"<EXECUTION_SKILL_DIR>"
+OUT = r"<CASE_DIR>"
+JUDGMENT = r"<JUDGMENT_PDF>"
 
 COURT_FULL = "广东省佛山市南海区人民法院"      # 抬头用全称
 COURT_SHORT = "佛山市南海区人民法院"           # 此致/所函/表单抬头
-CASE_NO = "（20XX）粤XXXX民初XXXX号"
+CASE_NO = "（2026）粤0605民初0000号"
 CAUSE = "买卖合同纠纷"
 APPLICANT = "某某公司"                       # 用于文件名
 DOC_TYPE = "民事判决书"                      # "民事判决书" / "民事调解书" / "民事裁定书"等
@@ -51,31 +52,36 @@ ITEMS = [
 ]
 TOTAL = "0.00"
 
-LAWYER = "示例律师"
-ASSIST = "示例助理"
-FIRM = "示例律师事务所"
-FIRM_ADDR = "（律所地址）"
-FIRM_TEL = "0000-0000000"
-MOBILE = "13800000000"
-LAWYER_ID = "000000000000000000"               # 11 送达确认书代理人身份号码
+LAWYER = "刘俊峰"
+ASSIST = "高凡竣"
+FIRM = "广东理航律师事务所"
+FIRM_ADDR = "佛山市南海区桂城京华广场五座37楼"
+FIRM_TEL = "<FIRM_TELEPHONE>"
+MOBILE = "<MOBILE_NUMBER>"
 
 # 主体类型：自然人申请执行人填下面两行；公司填 COMPANY 那组
 APPLICANT_ADDR = ""
 APPLICANT_ID = ""
 APPLICANT_MOBILE = ""                         # 申请执行人本人手机号：11 送达确认书当事人栏必填，不掌握就问用户
+APPLICANT_POSTCODE = ""                       # 11 表当事人邮寄送达邮编
 APPLICANT_IS_COMPANY = True
-APPLICANT_IS_INDIVIDUAL_BUSINESS = False      # 个体工商户：使用负责人身份证明书
+APPLICANT_IS_INDIVIDUAL_BUSINESS = False       # 个体工商户用负责人身份证明书
 APPLICANT_CODE = ""
 APPLICANT_REP = ""
 APPLICANT_REP_TITLE = "总经理"
+APPLICANT_COMPANY_TYPE = ""                   # 如“有限责任公司”
 APPLICANT_ACCOUNT = ""                        # 海珠退费承诺书：收款账号，不掌握留空
 APPLICANT_BANK = ""                           # 海珠退费承诺书：开户行，必须具体到支行
+LAWYER_POSTCODE = ""                          # 11 表诉讼代理人邮寄送达邮编
 DEFS_ARE_COMPANIES = [False]                  # 与 DEF_BLOCKS 一一对应
+DEFENDANT_COMPANY_TYPES = []                  # 与 DEF_BLOCKS 中的公司被执行人对应，如“有限责任公司”
+SPECIAL_AUTHORIZATION = True                  # 要素式代理权限是否特别授权
 
 # 地区开关
 RISK_NOTICE = False                           # 南海才出 12 执行风险提示
 ACCOUNT = "收款书"                            # "收款书" / "越秀退费书" / "海珠退费承诺书"
-WITH_ELEMENT = False                          # 要素式默认不出
+WITH_ELEMENT = False                          # 非深圳案件手动开启要素式；深圳自动开启
+IS_SHENZHEN = "深圳市" in COURT_FULL
 DOC_DATE = ""                                 # 海珠填实际网上申请日期，如 "2026年10月25日"；普通案件留空
 REFUND_TOTAL = ""                             # 海珠退费承诺书必填：可退诉讼费合计（只填数值）
 REFUND_BREAKDOWN = ""                         # 可选：如 "其中案件受理费XXX元、保全费XXX元"
@@ -83,6 +89,12 @@ REFUND_BREAKDOWN = ""                         # 可选：如 "其中案件受理
 # 以下三项给规则里需要文字的地方用（要素式/立案审批表），也可直接在函数里写死
 BIAODI = "本金及利息"                         # 立案审批表"标的额"
 EFFECTIVE_DATE = "2026年1月1日"               # 生效日
+ELEMENT_DATE = EFFECTIVE_DATE
+ELEMENT_PANJUE = "生效法律文书确定的金钱给付义务详见执行申请书请求项。"
+ELEMENT_NARRATIVE = FINDINGS
+ELEMENT_MONEY = "||".join(ITEMS)
+ELEMENT_PROPERTY = "被执行人名下的银行账户、存款、微信/支付宝账户、房产、车辆、股权及其他可供执行的财产。"
+HAS_BAOQUAN = False
 # ================= 数据块结束 =================
 
 
@@ -383,7 +395,7 @@ def load(name):
 def load_haizhu_account():
     candidates = [
         os.path.join(TPL, "海珠区材料", "退费申请及收款帐户承诺书(2).docx"),
-        r"C:\Users\liyeye\.codex\skills\execution-application-documents\assets\海珠区\退费申请及收款承诺书_空白官式.docx",
+        r"<EXECUTION_SKILL_DIR>\assets\海珠区\退费申请及收款承诺书_空白官式.docx",
     ]
     for path in candidates:
         if os.path.isfile(path):
@@ -493,9 +505,9 @@ def split_def(blk):
         if "统一社会信用代码" in s:
             idno = s.replace("统一社会信用代码", "").strip("。 ")
     # 公司/个体户整段里“统一社会信用代码…；法定代表人：某某”连写时，会把法代一起带进
-    # 10 表的证件号格（2026-10-19 某公司案踩过），这里在第一个分隔符处截断。
+    # 10 表的证件号格（2026-10-19 合喜案踩过），这里在第一个分隔符处截断。
     for sep in ("；", ";", "法定代表人"):
-        idno = idno.split(sep)[0].strip()
+        idno = idno.split(sep)[0].strip("。；; ")
     return name, sex, birth, addr, idno
 
 
@@ -518,7 +530,7 @@ def build_01():
         set_segments(cur, [(blk, None, None)])
     set_segments(find_para(doc, lambda t: t.startswith("案由"), "案由"), [("案由：" + CAUSE, None, None)])
     # 注意：这两处要写"标题的下一段"（正文），不能写标题段本身，否则标题被正文顶掉、
-    # 模板样本里的旧正文（含旧案号、旧生效日）会留在文件里（2026-10-15 某案案踩过）。
+    # 模板样本里的旧正文（含旧案号、旧生效日）会留在文件里（2026-10-15 李翠案踩过）。
     allp = doc.paragraphs
     i = next(i for i, p in enumerate(allp) if p.text.strip() == "申请执行依据")
     set_segments(allp[i + 1], [(COURT_FULL + CASE_NO + DOC_TYPE + "。", None, None)])
@@ -581,9 +593,9 @@ def build_01():
     save(doc, "01_执行申请书_%s.docx" % APPLICANT)
 
 
-# ---------- 01 要素式（默认不出；用户要时把 WITH_ELEMENT 置 True） ----------
+# ---------- 01 要素式（深圳默认；其他地区用户要求时输出） ----------
 def build_01e():
-    doc = load("强制执行申请书（要素式·样本）.docx")
+    doc = load("强制执行申请书（要素式·广州中挺诉肖照松、中山日美）.docx")
     t = doc.tables[0]
     rc = rows_of(t)
 
@@ -601,22 +613,59 @@ def build_01e():
                   "出生日期：\u2003\u2003年\u2003\u2003 月\u2003\u2003 日\u2003\u2003\u2003\u2003民族： ",
                   "工作单位：\u2003\u2003\u2003\u2003\u2003\u2003职务：\u2003\u2003\u2003\u2003\u2003联系电话： ",
                   "住所地（户籍所在地）：", "经常居住地： ", "证件类型：", "证件号码："]
-    if APPLICANT_IS_COMPANY:
+    legal_type_blanks = [
+        "类型：有限责任公司□ 股份有限公司□ 其他企业法人□",
+        "事业单位□ 社会团体□ 基金会□ 社会服务机构□",
+        "机关法人□ 农村集体经济组织法人□",
+        "城镇农村的合作经济组织法人□ 基层群众性自治组织法人□",
+        "个人独资企业□ 合伙企业□ 不具有法人资格的专业服务机构□",
+        "所有制性质：国有□（控股□ 参股□） 民营□ 其他            ",
+    ]
+
+    def clear_natural(cell):
+        for i, txt in enumerate(blanks_nat):
+            fill(cell, i, txt)
+
+    def clear_legal(cell):
         for i, txt in enumerate(blanks_a):
-            fill(rc[2][1], i, txt)
+            fill(cell, i, txt)
+        for offset, txt in enumerate(legal_type_blanks, start=7):
+            fill(cell, offset, txt)
+
+    def clear_legal_defendant(cell):
+        for i, txt in enumerate(blanks_b):
+            fill(cell, i, txt)
+        for offset, txt in enumerate(legal_type_blanks, start=5):
+            fill(cell, offset, txt)
+
+    def split_company(blk):
+        body = blk.replace("被执行人：", "")
+        name = body.split("，住所地", 1)[0].strip("。 ")
+        addr_m = re.search(r"住所地(.+?)，统一社会信用代码", body)
+        code_m = re.search(r"统一社会信用代码[:：]?\s*([0-9A-Z]+)", body)
+        rep_m = re.search(r"法定代表人[:：]\s*([^。，]+)", body)
+        return name, (addr_m.group(1).strip() if addr_m else ""), (code_m.group(1) if code_m else ""), (rep_m.group(1).strip() if rep_m else "")
+
+    def org_type_line(selected):
+        choices = ("有限责任公司", "股份有限公司", "其他企业法人")
+        return "类型：" + " ".join(x + ("☑" if x == selected else "□") for x in choices)
+
+    # 先清空两类申请执行人模板样例，只保留逐项空白占位。
+    clear_natural(rc[2][1])
+    clear_legal(rc[3][1])
+    if APPLICANT_IS_COMPANY:
         c = rc[3][1]
         fill(c, 0, "名称：" + APPLICANT)
         fill(c, 1, "住所地（主要办事机构所在地）：" + APPLICANT_ADDR)
         fill(c, 2, "注册地/登记地： ")
         fill(c, 3, "法定代表人/负责人：" + APPLICANT_REP + "\u2003职务：" + APPLICANT_REP_TITLE
-                   + "\u2003\u2003\u2003\u2003联系电话： ")
+                   + "\u2003\u2003\u2003\u2003联系电话：" + APPLICANT_MOBILE)
         fill(c, 4, "统一社会信用代码：" + APPLICANT_CODE)
         fill(c, 5, "银行账号： ")
         fill(c, 6, "开户名：\u2003\u2003\u2003\u2003开户行： ")
+        fill(c, 7, org_type_line(APPLICANT_COMPANY_TYPE))
     else:
         name, sex, birth, addr, idno = split_def(APPLICANT_BLOCK.replace("申请执行人：", "被执行人："))
-        for i, txt in enumerate(blanks_nat):
-            fill(rc[2][1], i, txt)
         fill(rc[2][1], 0, "姓名：" + name)
         fill(rc[2][1], 1, "性别：男%s 女%s " % ("" if sex == "男" else "□", "" if sex == "女" else "□"))
         fill(rc[2][1], 2, "出生日期：" + birth + "\u2003\u2003\u2003\u2003民族：汉族")
@@ -625,13 +674,11 @@ def build_01e():
         fill(rc[2][1], 7, "证件号码：" + idno)
         fill(rc[2][1], 8, "银行账号： ")
         fill(rc[2][1], 9, "开户名：\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003\u2003开户行： ")
-        for i, txt in enumerate(blanks_a):
-            fill(rc[3][1], i, txt)
     c = rc[4][1]
-    fill(c, 0, "有")
+    fill(c, 0, "有☑")
     fill(c, 1, "姓名：" + LAWYER)
     fill(c, 2, "单位：" + FIRM + "    职务：律师    联系电话：" + MOBILE)
-    fill(c, 3, "代理权限：一般授权□    特别授权")
+    fill(c, 3, "代理权限：一般授权%s    特别授权%s" % ("□" if SPECIAL_AUTHORIZATION else "☑", "☑" if SPECIAL_AUTHORIZATION else "□"))
     fill(c, 4, "无□")
     base_row = None
     for ri, row in enumerate(rc):
@@ -647,6 +694,8 @@ def build_01e():
         last.addnext(new)
         last = new
     rc = rows_of(t)
+    for k in range(n_nat):
+        clear_natural(rc[base_row + k][1])
     k = 0
     for i, is_comp in enumerate(DEFS_ARE_COMPANIES):
         if is_comp:
@@ -663,11 +712,29 @@ def build_01e():
         fill(c, 7, "证件号码：" + idno)
         k += 1
     legal_row = base_row + n_nat
-    for i, txt in enumerate(blanks_b):
-        fill(rc[legal_row][1], i, txt)
-    fill(rc[legal_row][1], 10, "所有制性质：国有□（控股□ 参股□） 民营□ 其他            ")
+    clear_legal_defendant(rc[legal_row][1])
+    companies = [blk for blk, is_comp in zip(DEF_BLOCKS, DEFS_ARE_COMPANIES) if is_comp]
+    if len(companies) > 1:
+        raise ValueError("要素式模板当前只支持一名法人/非法人组织被执行人；多名时需另行扩展表格行")
+    if companies:
+        name, addr, code, rep = split_company(companies[0])
+        c = rc[legal_row][1]
+        fill(c, 0, "名称：" + name)
+        fill(c, 1, "住所地（主要办事机构所在地）：" + addr)
+        fill(c, 2, "注册地/登记地： ")
+        fill(c, 3, "法定代表人/负责人：" + rep + "\u2003职务：\u2003\u2003\u2003\u2003联系电话： ")
+        fill(c, 4, "统一社会信用代码：" + code)
+        company_type = DEFENDANT_COMPANY_TYPES[0] if DEFENDANT_COMPANY_TYPES else ""
+        fill(c, 5, org_type_line(company_type))
     base = legal_row + 2
-    fill(rc[base][1], 1, "判决书 裁定书□ 调解书□ 制裁决定□ 支付令□ ")
+    type_map = {
+        "民事判决书": "判决书",
+        "民事裁定书": "裁定书",
+        "民事调解书": "调解书",
+    }
+    selected_type = type_map.get(DOC_TYPE, "判决书")
+    type_labels = ("判决书", "裁定书", "调解书", "制裁决定", "支付令")
+    fill(rc[base][1], 1, " ".join(x + ("☑" if x == selected_type else "□") for x in type_labels))
     fill(rc[base + 1][1], 0, COURT_FULL)
     fill(rc[base + 2][1], 0, CAUSE)
     fill(rc[base + 3][1], 0, CASE_NO)
@@ -676,8 +743,20 @@ def build_01e():
     fill(rc[base + 7][0], 0, ELEMENT_NARRATIVE)
     c = rc[base + 8][1]
     lines = ELEMENT_MONEY if isinstance(ELEMENT_MONEY, (list, tuple)) else ELEMENT_MONEY.split("||")
+    lines = list(lines)
+    if lines and lines[0].startswith("金钱给付"):
+        lines[0] = "金钱给付☑"
+    else:
+        lines.insert(0, "金钱给付☑")
+    # 要素式模板的金钱给付栏是已填样本；先清空全部段落，避免旧案利息和当事人残留。
+    existing_paras = list(c.paragraphs)
+    for p in existing_paras:
+        if p.runs:
+            set_para_text(p, "")
     while len(c.paragraphs) < len(lines):
         c.add_paragraph()
+    for p in list(c.paragraphs[len(lines):]):
+        p._p.getparent().remove(p._p)
     for i, txt in enumerate(lines):
         fill(c, i, txt)
     c = rc[base + 9][1]
@@ -705,7 +784,7 @@ def build_02():
     set_segments(ps[6], [("受委托人：", None, True)])
     work_ps = [p for p in doc.paragraphs if p.text.strip().startswith("工作单位：")]
     assert len(work_ps) >= 2, "授权委托书缺少第二位受委托人的工作单位栏"
-    set_segments(work_ps[1], [("工作单位：示例律师事务所    职务：", None, None)])
+    set_segments(work_ps[1], [("工作单位：广东理航律师事务所    职务：", None, None)])
     set_segments(ps[11], [
         ("现委托以上受委托人在我方与", None, None),
         (defendant_names(), True, None),
@@ -717,12 +796,10 @@ def build_02():
     save(doc, "02_执行授权委托书_%s.docx" % APPLICANT)
 
 
-# ---------- 03 撤销暨变更授权委托书（所有法院、所有案件默认输出） ----------
+# ---------- 03 撤销暨变更授权委托书（所有案件默认输出） ----------
 def build_03():
-    skill_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    template = os.path.join(
-        skill_root, "assets", "templates", "03撤销暨变更授权委托书_空白模板.docx"
-    )
+    # 脚手架会复制到 %TEMP% 运行，不能用 __file__ 反推技能目录。
+    template = os.path.join(SKILL_DIR, "assets", "templates", "03撤销暨变更授权委托书_空白模板.docx")
     with open(template, "rb") as f:
         doc = Document(io.BytesIO(f.read()))
     ps = doc.paragraphs
@@ -734,9 +811,7 @@ def build_03():
         (CAUSE, True, None),
         ("申请强制执行一案中，现撤销对原受托人的授权委托，变更以下受委托人为我方诉讼代理人。", None, None),
     ])
-    set_segments(ps[10], [
-        ("特别授权。代为申请执行，代为提起执行申请、承认、放弃、变更执行请求，进行和解、调解，签收法律文书等。", None, None)
-    ])
+    set_segments(ps[10], [("特别授权。代为申请执行，代为提起执行申请、承认、放弃、变更执行请求，进行和解、调解，签收法律文书等。", None, None)])
     set_segments(ps[12], [("委托人：", None, None), ("\u3000" * 20, True, None)])
     set_segments(ps[14], [("               年      月      日   ", None, None)])
     normalize(doc)
@@ -747,38 +822,25 @@ def build_03():
 def build_04():
     if APPLICANT_IS_INDIVIDUAL_BUSINESS:
         doc = load("05负责人身份证明书(个体户用这个）.docx")
-        p = find_para(
-            doc,
-            lambda t: "在我店担任" in t or "在我厂担任" in t,
-            "负责人姓名行",
-        )
-        name_hit = title_hit = seen_title_marker = False
+        p = find_para(doc, lambda t: "在我店担任" in t, "负责人姓名行")
+        hit_name = hit_title = False
         for r in p.runs:
-            if "在我店担任" in r.text or "在我厂担任" in r.text:
-                seen_title_marker = True
-            elif seen_title_marker and not title_hit and r.text.strip():
-                r.text = "经营者"
-                title_hit = True
-            elif not seen_title_marker and not name_hit and r.text.strip():
-                r.text = APPLICANT_REP
-                name_hit = True
-        assert name_hit and title_hit, "未找到负责人身份证明书样例字段"
-
-        nonempty = [q for q in doc.paragraphs if q.text.strip()]
-        date_i = next(
-            i for i, q in enumerate(nonempty)
-            if q.text.strip().startswith("日期") and "年" in q.text and "月" in q.text
-        )
-        comp = nonempty[date_i - 1]
-        for r in reversed(comp.runs):
-            if r.text.strip():
-                leading = r.text[: len(r.text) - len(r.text.lstrip(" "))]
-                r.text = leading + APPLICANT
+            if "李家冬" in r.text:
+                r.text = r.text.replace("李家冬", APPLICANT_REP)
+                hit_name = True
+            if "总经理" in r.text:
+                r.text = r.text.replace("总经理", "经营者")
+                hit_title = True
+            r.text = r.text.replace("在我店担任", "在我厂担任").replace("我店", "我厂")
+        assert hit_name and hit_title, "未找到负责人身份证明书样例字段"
+        comp = find_para(doc, lambda t: "钓鲜岛水产品经营部" in t, "负责人证明落款")
+        for r in comp.runs:
+            if "钓鲜岛水产品经营部" in r.text:
+                r.text = r.text.replace("佛山市顺德区钓鲜岛水产品经营部", APPLICANT)
                 break
         normalize(doc)
         save(doc, "04_负责人身份证明书_%s.docx" % APPLICANT)
         return
-
     doc = load("04法定代表人身份证明书(公司用这个).docx")
     p = find_para(doc, lambda t: "在我公司担任" in t, "姓名行")
     hit = False
@@ -880,7 +942,8 @@ def build_05():
     set_sz(ps[6].runs[1], 16)
     set_segments(ps[7], [("账           号：", None, None), (" " * 30, True, None)])
     set_sz(ps[7].runs[1], 16)
-    # 14 磅下每侧空格 = 17 - 名称字数，使户名下划线右缘与开户行、账号齐平。
+    # 户名行下划线右端要与开户行/账号对齐：14 磅下每侧空格 = 17 - 名称字数
+    # （3 字姓名 → 14/14；12 字公司名 → 5/5），不能所有名称都写死 5 个。
     pad = max(1, 17 - len(APPLICANT))
     set_segments(ps[8], [("户           名：", None, None),
                          (" " * pad + APPLICANT + " " * pad, True, None)])
@@ -930,7 +993,7 @@ def build_08():
 
 # ---------- 09 所函 ----------
 def build_09():
-    doc = load("09示例律师事务所所函.docx")
+    doc = load("09广东理航律师事务所所函.docx")
     ps = doc.paragraphs
     set_segments(ps[2], [(COURT_SHORT + "：", None, None)])
     set_segments(ps[3], [
@@ -944,7 +1007,7 @@ def build_09():
     ])
     set_segments(ps[8], [("年\u3000\u3000月\u3000\u3000日", None, None)])
     normalize(doc)
-    save(doc, "09_示例律师事务所所函_%s.docx" % APPLICANT)
+    save(doc, "09_广东理航律师事务所所函_%s.docx" % APPLICANT)
 
 
 # ---------- 10 被告（第三人）信息表 ----------
@@ -954,24 +1017,28 @@ def build_10():
     t = doc.tables[0]
     cells = rows_of(t)
     fb = cell_rpr(cells[1][1])
+    value_donor = cell_rpr(cells[2][2])
 
     def put(c, s):
-        donor = cell_rpr(c)
-        set_cell(c, s, donor if donor is not None else fb)
+        set_cell(c, s, cell_rpr(c) or fb)
+
+    def put_value(c, s):
+        # 统一使用首个自然人数据单元格的字体字号，避免模板后续行残留大号加粗。
+        set_cell(c, s, value_donor)
 
     put(cells[1][1], CASE_NO)
     put(cells[1][3], APPLICANT)
     blocks = [(2, 3, 4, 5), (9, 10, 11, 12), (16, 17, 18, 19), (23, 24, 25, 26)]
     for blk, (bn, b1, b2, blive) in zip(DEF_BLOCKS, blocks):
         name, sex, birth, addr, idno = split_def(blk)
-        put(cells[bn][2], name)
-        put(cells[b1][2], idno)
-        put(cells[b2][2], idno)
+        put_value(cells[bn][2], name)
+        put_value(cells[b1][2], idno)
+        put_value(cells[b2][2], idno)
         tick_first_box(cells[bn][0])
         if "统一社会信用代码" in blk:
-            # 单位被执行人没有户籍所在地，改填登记／经常联系地址。
+            # 被执行人是单位：没有户籍所在地，改填登记／经常联系地址。
             untick_all(cells[blive][2])
-            put(cells[blive][2], "☑经常居住地址：" + addr)
+            put_value(cells[blive][2], "☑经常居住地址：" + addr)
     for i in range(len(DEF_BLOCKS), len(blocks)):
         bn, b1, b2, blive = blocks[i]
         untick_all(cells[bn][0])
@@ -989,8 +1056,7 @@ def build_11():
     fb = cell_rpr(cells[2][2])
 
     def put(c, s):
-        donor = cell_rpr(c)
-        set_cell(c, s, donor if donor is not None else fb)
+        set_cell(c, s, cell_rpr(c) or fb)
 
     addr = APPLICANT_ADDR
     if APPLICANT_IS_COMPANY:
@@ -1000,14 +1066,17 @@ def build_11():
     put(cells[0][1], CASE_NO)
     put(cells[0][3], CAUSE)
     put(cells[2][2], APPLICANT)
-    put(cells[3][2], "☑同意手机短信送达，手机号码：         □同意微信送达，微信号：              ")
-    # 电子送达手机号和身份号码必须填写并加下划线；企业身份号码栏填统一社会信用代码。
+    # 当事人电子送达必须填手机号＋身份号码并加下划线：自然人用身份证号，企业用统一社会信用代码。
     applicant_econtact = MOBILE if APPLICANT_IS_COMPANY else APPLICANT_MOBILE
     applicant_identity = APPLICANT_CODE if APPLICANT_IS_COMPANY else APPLICANT_ID
-    if not applicant_econtact.strip():
-        raise ValueError("11表当事人电子送达手机号为空，请补充 APPLICANT_MOBILE/经办人手机号")
     if not applicant_identity.strip():
         raise ValueError("11表当事人身份号码为空：企业请补充 APPLICANT_CODE，自然人请补充 APPLICANT_ID")
+    put_rich_lines(cells[3][2], [[
+        ("☑同意手机短信送达，手机号码：", None, None),
+        (("  " + applicant_econtact + "  ") if applicant_econtact.strip() else (" " * 9),
+         bool(applicant_econtact.strip()), None),
+        ("   □同意微信送达，微信号：              ", None, None),
+    ]])
     put_rich_lines(cells[4][2], [
         "☑同意采用人民法院在线服务网（可通过微信小程序“人民法院在线服务”登录）等诉讼服务平台电子送达",
         [("手机号码：", None, None), ("  " + applicant_econtact + "  ", True, None),
@@ -1015,19 +1084,23 @@ def build_11():
     ])
     put(cells[5][3], addr)
     put(cells[6][3], (" " + APPLICANT_MOBILE + " ") if APPLICANT_MOBILE else "")
+    if APPLICANT_POSTCODE.strip():
+        put(cells[6][5], APPLICANT_POSTCODE.strip())
     put(cells[7][2], LAWYER)
     put_rich_lines(cells[8][2], [[
         ("☑同意手机短信送达，手机号码：", None, None),
         ("  " + MOBILE + "  ", True, None),
-        ("□同意微信送达，微信号：              ", None, None),
+        ("   □同意微信送达，微信号：              ", None, None),
     ]])
     put_rich_lines(cells[9][2], [
         "☑同意采用人民法院在线服务网（可通过微信小程序“人民法院在线服务”登录）等诉讼服务平台电子送达",
         [("手机号码：", None, None), ("  " + MOBILE + "  ", True, None),
-         ("公民身份号码：", None, None), ("  " + LAWYER_ID + "  ", True, None)],
+         ("公民身份号码：", None, None), ("  <ID_NUMBER>  ", True, None)],
     ])
     put(cells[10][3], FIRM_ADDR)
     put(cells[11][3], " " + MOBILE + "  ")
+    if LAWYER_POSTCODE.strip():
+        put(cells[11][5], LAWYER_POSTCODE.strip())
     put_lines(cells[12][1], [
         "同意以上述邮寄送达地址作为接收诉讼文书以及诉讼活动信息的送达地址；电子送达须另行勾选确认。",
         "签名或捺印：_______________",
@@ -1055,7 +1128,7 @@ if __name__ == "__main__":
         todo.insert(2, build_04)
     if RISK_NOTICE:
         todo.append(build_12)
-    if WITH_ELEMENT:
+    if WITH_ELEMENT or IS_SHENZHEN:
         todo.insert(1, build_01e)
     for fn in todo:
         fn()

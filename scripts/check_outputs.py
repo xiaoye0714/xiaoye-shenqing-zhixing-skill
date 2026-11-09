@@ -24,11 +24,11 @@ try:  # 避免 PowerShell 控制台按 GBK 输出导致中文乱码
 except Exception:
     pass
 
-TEMPLATES = Path(r"C:\你的路径\执行申请模板")
-ELEMENT_TPL = TEMPLATES / "强制执行申请书（要素式·样本）.docx"
+TEMPLATES = Path(r"<YOUR_TEMPLATE_DIR>")
+ELEMENT_TPL = TEMPLATES / "强制执行申请书（要素式·广州中挺诉肖照松、中山日美）.docx"
 # 法院制式表格自带的中性色（231F20，肉眼等同黑字）不算“非黑字”
 OK_COLORS = (None, "000000", "auto", "231F20", "231f20")
-# 半角括号也要认：模板样本里常见 "(20XX) 粤 XXXX 民初 XXXX 号" 这种写法
+# 半角括号也要认：模板样本里常见 "(2025) 粤 0605 民初 45647 号" 这种写法
 CASE_NO = re.compile(r"[（(]20\d\d[)）][^号]{0,24}号")
 
 
@@ -73,7 +73,13 @@ def font_ok(run):
     rPr = run._element.rPr
     if rPr is None:
         return False
-    return rPr.find(qn("w:rFonts")) is not None and rPr.find(qn("w:sz")) is not None
+    sz = rPr.find(qn("w:sz"))
+    if rPr.find(qn("w:rFonts")) is None or sz is None:
+        return False
+    try:
+        return int(sz.get(qn("w:val"), "0")) > 0
+    except ValueError:
+        return False
 
 
 def count_missing_fonts(path):
@@ -245,27 +251,35 @@ def check(path, avoid):
                         if re.search(r"[0-9A-Z]{18}[。；;]\s*$", value.strip()):
                             msgs.append("10表统一社会信用代码后残留标点：" + value.strip())
                             break
+        id_styles = set()
+        for _, run in runs_of(d):
+            text = run.text.strip()
+            if re.fullmatch(r"\d{17}[\dXx]", text) and run.font.size is not None:
+                id_styles.add((round(run.font.size.pt, 1), bool(run.font.bold)))
+        if id_styles and (len(id_styles) > 1 or any(is_bold for _, is_bold in id_styles)):
+            detail = "、".join(f"{size:g}磅{'加粗' if bold else '常规'}" for size, bold in sorted(id_styles))
+            msgs.append(f"10表各被执行人证件号码字号/字重不一致：{detail}")
 
     if path.name.startswith("03_撤销暨变更授权委托书"):
         ps = d.paragraphs
         for heading in ("变更后的受委托人一", "变更后的受委托人二"):
             hi = next((i for i, p in enumerate(ps) if p.text.startswith(heading)), None)
             if hi is None:
-                msgs.append("03表" + heading + "结构不完整")
+                msgs.append("03" + heading + "结构不完整")
                 continue
-            work = next((p for p in ps[hi + 1:] if p.text.startswith("工作单位：")), None)
+            wu = next((p for p in ps[hi + 1:] if p.text.startswith("工作单位：")), None)
             phone = next((p for p in ps[hi + 1:] if p.text.startswith("联系电话：")), None)
-            if work is None or phone is None:
-                msgs.append("03表" + heading + "缺少工作单位或联系电话栏")
+            if wu is None or phone is None:
+                msgs.append("03" + heading + "缺少工作单位或联系电话栏")
                 continue
-            unit_gap = work.text.split("工作单位：广东", 1)[-1].split("律师事务所", 1)[0].strip(" \u3000")
-            title_gap = work.text.split("职务：", 1)[-1].strip(" \u3000")
-            phone_gap = phone.text.split("联系电话：", 1)[-1].strip(" \u3000")
+            unit_gap = wu.text.split("工作单位：广东", 1)[1].split("律师事务所", 1)[0].strip(" \u3000")
+            title_gap = wu.text.split("职务：", 1)[1].strip(" \u3000")
+            phone_gap = phone.text.split("联系电话：", 1)[1].strip(" \u3000")
             if unit_gap or title_gap or phone_gap:
-                msgs.append("03表" + heading + "的单位、职务或联系电话未留空")
-            for p in (work, phone):
+                msgs.append("03" + heading + "的单位、职务或联系电话未留空")
+            for p in (wu, phone):
                 if not any(r.underline and not r.text.strip(" \u3000") for r in p.runs):
-                    msgs.append("03表" + heading + "空白下划线缺失")
+                    msgs.append("03" + heading + "空白下划线缺失")
                     break
 
     with zipfile.ZipFile(path) as z:

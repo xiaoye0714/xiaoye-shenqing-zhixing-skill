@@ -48,12 +48,8 @@ def main():
         for line in range(480, 721, 10):
             doc = Document(docx_path)
             set_line_spacing(doc, line)
-            tmp_docx = os.path.join(
-                tempfile.gettempdir(), "_fit_01_%d_%d.docx" % (os.getpid(), line)
-            )
-            tmp_pdf = os.path.join(
-                tempfile.gettempdir(), "_fit_01_%d_%d.pdf" % (os.getpid(), line)
-            )
+            tmp_docx = os.path.join(tempfile.gettempdir(), "_fit_01_%d_%d.docx" % (os.getpid(), line))
+            tmp_pdf = os.path.join(tempfile.gettempdir(), "_fit_01_%d_%d.pdf" % (os.getpid(), line))
             doc.save(tmp_docx)
             word = None
             try:
@@ -71,29 +67,26 @@ def main():
                         if bottoms:
                             candidates.append((len(pages), bottoms[-1], line))
             finally:
-                for path in (tmp_docx, tmp_pdf):
-                    if os.path.isfile(path):
-                        os.remove(path)
+                for p in (tmp_docx, tmp_pdf):
+                    if os.path.isfile(p):
+                        os.remove(p)
     finally:
-        app.Quit()
+        pass
 
     if not candidates:
         print("未找到“正文页＋独立落款末页”的可用行距")
         return 1
 
-    min_pages = min(item[0] for item in candidates)
-    same_pages = [item for item in candidates if item[0] == min_pages]
-    _, bottom, selected = max(same_pages, key=lambda item: item[1])
+    min_pages = min(x[0] for x in candidates)
+    same_pages = [x for x in candidates if x[0] == min_pages]
+    _, bottom, selected = max(same_pages, key=lambda x: x[1])
 
     final_doc = Document(docx_path)
     set_line_spacing(final_doc, selected)
     tmp_final = docx_path + ".tmp"
     final_doc.save(tmp_final)
     os.replace(tmp_final, docx_path)
-    print(
-        "selected_line_twips=%d pages=%d last_body_bottom=%.1f"
-        % (selected, min_pages, bottom)
-    )
+    print("selected_line_twips=%d pages=%d last_body_bottom=%.1f" % (selected, min_pages, bottom))
     return 0
 
 
