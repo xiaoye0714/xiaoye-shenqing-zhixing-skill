@@ -8,7 +8,7 @@
 4. 跑 review_case.py 复核（已内含交付前自检），只有报 [!] 的才渲染 PNG 看图。
 
 约定：
-- 深圳市法院自动生成要素式；其他地区用户明确要求时才把 WITH_ELEMENT 置 True；
+- 深圳市法院、佛山市禅城区人民法院自动生成要素式；其他地区用户明确要求时才把 WITH_ELEMENT 置 True；
 - 定位段落一律按内容锚点，不按下标（模板会被换成天枢/中挺那种已填样本）；
 - 落款"申请执行人："必须完全匹配，不能用 startswith（会命中首部当事人行）；
 - 删多余的请求项段落从末尾往前删；
@@ -80,8 +80,9 @@ SPECIAL_AUTHORIZATION = True                  # 要素式代理权限是否特�
 # 地区开关
 RISK_NOTICE = False                           # 南海才出 12 执行风险提示
 ACCOUNT = "收款书"                            # "收款书" / "越秀退费书" / "海珠退费承诺书"
-WITH_ELEMENT = False                          # 非深圳案件手动开启要素式；深圳自动开启
+WITH_ELEMENT = False                          # 其他地区手动开启要素式；深圳、禅城自动开启
 IS_SHENZHEN = "深圳市" in COURT_FULL
+IS_CHANCHENG = "佛山市禅城区人民法院" in COURT_FULL
 DOC_DATE = ""                                 # 海珠填实际网上申请日期，如 "2026年10月25日"；普通案件留空
 REFUND_TOTAL = ""                             # 海珠退费承诺书必填：可退诉讼费合计（只填数值）
 REFUND_BREAKDOWN = ""                         # 可选：如 "其中案件受理费XXX元、保全费XXX元"
@@ -95,6 +96,7 @@ ELEMENT_NARRATIVE = FINDINGS
 ELEMENT_MONEY = "||".join(ITEMS)
 ELEMENT_PROPERTY = "被执行人名下的银行账户、存款、微信/支付宝账户、房产、车辆、股权及其他可供执行的财产。"
 HAS_BAOQUAN = False
+BAOQUAN_NO = ""                               # 有保全时填写保全案号
 # ================= 数据块结束 =================
 
 
@@ -601,7 +603,7 @@ def build_01():
     save(doc, "01_执行申请书_%s.docx" % APPLICANT)
 
 
-# ---------- 01 要素式（深圳默认；其他地区用户要求时输出） ----------
+# ---------- 01 要素式（深圳、禅城默认；其他地区用户要求时输出） ----------
 def build_01e():
     doc = load("强制执行申请书（要素式·广州中挺诉肖照松、中山日美）.docx")
     t = doc.tables[0]
@@ -768,10 +770,10 @@ def build_01e():
     for i, txt in enumerate(lines):
         fill(c, i, txt)
     c = rc[base + 9][1]
-    fill(c, 0, "有" if HAS_BAOQUAN else "有□")
-    fill(c, 1, "保全案号： ")
+    fill(c, 0, "有☑" if HAS_BAOQUAN else "有□")
+    fill(c, 1, "保全案号：" + BAOQUAN_NO)
     fill(c, 2, "保全措施最早到期时间：\u2003\u2003年\u2003\u2003月\u2003\u2003日 ")
-    fill(c, 3, "无□" if HAS_BAOQUAN else "无")
+    fill(c, 3, "无□" if HAS_BAOQUAN else "无☑")
     fill(rc[base + 10][1], 0, ELEMENT_PROPERTY)
     for row in t.rows:
         trPr = row._tr.find(qn("w:trPr"))
@@ -1139,7 +1141,7 @@ if __name__ == "__main__":
         todo.insert(2, build_04)
     if RISK_NOTICE:
         todo.append(build_12)
-    if WITH_ELEMENT or IS_SHENZHEN:
+    if WITH_ELEMENT or IS_SHENZHEN or IS_CHANCHENG:
         todo.insert(1, build_01e)
     for fn in todo:
         fn()

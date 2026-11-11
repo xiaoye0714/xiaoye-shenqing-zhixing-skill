@@ -286,7 +286,10 @@ def check(path, avoid):
         xml = z.read("word/document.xml").decode("utf-8", "ignore")
     text = re.sub(r"<[^>]+>", "", xml)
     nos = sorted(set(CASE_NO.findall(text)))
-    if len(nos) > 1:
+    # 要素式申请会同时填写执行依据案号与保全案号（如“执保”“财保”），
+    # 只要存在唯一的主案号，就不属于串案。
+    main_nos = [n for n in nos if "执保" not in n and "财保" not in n]
+    if len(nos) > 1 and len(main_nos) != 1:
         msgs.append("出现多个案号：" + "，".join(nos))
     hits = [a for a in avoid if a and a in text]
     if hits:
