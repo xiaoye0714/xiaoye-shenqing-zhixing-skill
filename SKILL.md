@@ -2,8 +2,8 @@
 name: execution-application-documents
 description: 根据中国民事判决书整理并填写强制执行申请材料，准备执行申请书及配套表格（含法院提交材料清单、被告第三人信息表、地区专用退费/收款账户承诺书）。Use when the user asks to prepare execution application documents, 强制执行材料, 执行申请书, or fill the user's execution templates from a judgment; includes the special requirements for Guangzhou Haizhu District Court.
 metadata:
-  version: "2026.11.09.3"
-  updated: "2026-11-09"
+  version: "2026.11.11.1"
+  updated: "2026-11-11"
   repository: "https://github.com/xiaoye0714/xiaoye-shenqing-zhixing-skill"
 ---
 
@@ -81,7 +81,7 @@ metadata:
 2. **不要每次重写生成器**：**开工时现复制一份** `scripts/build_exec_scaffold.py` 到临时目录（脚本随时在修，别用上个会话遗留的旧副本，否则已修的坑会复发），**只改顶部「案件数据」块**（申请人/被执行人整段、REASON1、FINDINGS、ITEMS、TOTAL、`DOC_TYPE`、地区开关 ACCOUNT／RISK_NOTICE；海珠区另设 `ACCOUNT="海珠退费承诺书"`、`REFUND_TOTAL`、可选 `REFUND_BREAKDOWN`、`DOC_DATE`、收款账号与开户行），跑一次生成全套。脚本会自动检测 `COURT_FULL` 含“深圳市”时输出要素式《强制执行申请书》；其他地区仍可手动把 `WITH_ELEMENT=True`。`DOC_TYPE` 遇调解书必须写“民事调解书”，不得让 01 依据栏、07 清单、08 审批表残留“民事判决书”。脚手架已按内容定位，模板换成“已填样本”也不会崩——**不要再 dump 模板结构、也不要按段落下标写脚本**。
    - 脚手架复制到临时目录运行时，`build_03` 必须通过顶部固定的 `SKILL_DIR` 读取技能内的空白模板，不能用 `__file__` 反推，否则会错误指向 `%TEMP%\assets`。
 3. **写盘前先查占用**：用一句 `open(path,'r+b')` 逐个试开目标文件即可确认有没有被 WPS 占着；不要在写入失败后一份份试。
-4. **定位段落按内容找，不要算下标**：克隆或删除段落后下标必然错位。
+4. **定位段落按内容找，不要算下标**：克隆或删除段落后下标必然错位。执行请求项按 `ITEMS` 数量动态增删，禁止在模板原有请求项序号上直接写入，以免请求项多于模板行数时覆盖“以上各项暂合计”；自检识别任意以 `03` 开头且含“撤销”“授权”的文件名，不强制改用户沿用的模板文件名。
 5. **复核＋自检只跑一条命令**：`python scripts/review_case.py "<案件文件夹>" 旧案关键词...`——它转 PDF 查页数/落款/裁行/串案，**并自动接着跑一遍 `check_outputs.py` 的字体、颜色、编号、空段自检**。只有报 `[!]` 的那份才渲染 PNG 人工看，不要每份都开图。关键词只用旧案当事人姓名／旧案号／旧法院／旧律师，**不要用“民初”“合同纠纷”这类通用词，也不要把本案自己的字号、人名放进去**（会全份误报）。
 6. **稳定模板不必反复看图**：04、12、02 等纯替换模板，程序化检查通过即算过；需要人工看的只有 01（落款分页）、要素式（表格行）、10 与 11（合并单元格）。
 7. **解释器固定**：生成与自检一律用 `<YOUR_PYTHON_EXECUTABLE>`。

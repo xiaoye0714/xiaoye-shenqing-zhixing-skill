@@ -541,12 +541,20 @@ def build_01():
     allp = doc.paragraphs
     i_first = next(i for i, p in enumerate(allp) if p.text.strip().startswith("1."))
     i_total = next(i for i, p in enumerate(allp) if p.text.strip().startswith("（以上各项暂合计"))
-    for p in allp[i_first + len(ITEMS):i_total]:
-        p._p.getparent().remove(p._p)
-    allp = doc.paragraphs
-    i_first = next(i for i, p in enumerate(allp) if p.text.strip().startswith("1."))
-    for k, text in enumerate(ITEMS):
-        set_segments(allp[i_first + k], [(text, None, None)])
+    req_ps = allp[i_first:i_total]
+    if not req_ps:
+        raise AssertionError("模板缺少执行请求项段落")
+    # 模板请求项数量可能少于本案：先增减请求项段落，再统一写文字。
+    # 不能直接在原段落上写 ITEMS，否则请求项多于模板时会覆盖暂合计行（2026-11-11 卓阳案踩过）。
+    while len(req_ps) < len(ITEMS):
+        new_el = copy.deepcopy(req_ps[-1]._p)
+        req_ps[-1]._p.addnext(new_el)
+        req_ps.append(Paragraph(new_el, req_ps[-1]._parent))
+    while len(req_ps) > len(ITEMS):
+        req_ps[-1]._p.getparent().remove(req_ps[-1]._p)
+        req_ps.pop()
+    for p, text in zip(req_ps, ITEMS):
+        set_segments(p, [(text, None, None)])
     p_total = find_para(doc, lambda t: t.strip().startswith("（以上各项暂合计"), "暂合计")
     set_segments(p_total, [("（以上各项暂合计：" + TOTAL + "元）", None, True)])
     clear_first_line_indent(p_total)
@@ -785,6 +793,9 @@ def build_02():
     work_ps = [p for p in doc.paragraphs if p.text.strip().startswith("工作单位：")]
     assert len(work_ps) >= 2, "授权委托书缺少第二位受委托人的工作单位栏"
     set_segments(work_ps[1], [("工作单位：广东理航律师事务所    职务：", None, None)])
+    phone_ps = [p for p in doc.paragraphs if p.text.strip().startswith("联系电话：")]
+    assert len(phone_ps) >= 2, "授权委托书缺少第二位受委托人的联系电话栏"
+    set_segments(phone_ps[1], [("联系电话：", None, None), (" " * 24, True, None)])
     set_segments(ps[11], [
         ("现委托以上受委托人在我方与", None, None),
         (defendant_names(), True, None),

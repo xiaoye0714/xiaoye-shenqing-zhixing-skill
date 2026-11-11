@@ -1,6 +1,6 @@
 # 小野的申请执行skill
 
-**当前版本：v2026.11.09.3**
+**当前版本：v2026.11.11.1**
 
 给 **Codex / ChatGPT Work** 用的 Agent Skill：读一份民事判决书，一次生成整套**申请强制执行材料**（Word）。
 
@@ -93,6 +93,7 @@ python scripts/review_case.py "<案件文件夹>" 旧案关键词...
 
 ## 版本与历史
 
+- [v2026.11.11.1](https://github.com/xiaoye0714/xiaoye-shenqing-zhixing-skill/releases/tag/v2026.11.11.1)：修复执行请求项多于模板行数时覆盖暂合计的问题；支持沿用非标准 `03` 文件名并通过自检；清理授权委托书第二位受托人的残留电话
 - [v2026.11.09.3](https://github.com/xiaoye0714/xiaoye-shenqing-zhixing-skill/releases/tag/v2026.11.09.3)：深圳案件默认输出要素式强制执行申请书；要素式勾选统一为“选中项☑、未选项□”；申请执行材料取消利息计算表；纠正 GitHub 同步仓库
 - [v1.0.3](https://github.com/xiaoye0714/xiaoye-shenqing-zhixing-skill/releases/tag/v1.0.3)：03 改为所有法院固定输出，新增 01 正文铺满与独立落款页自动排版，补充 10／11 表专项校验
 - [v1.0.1](https://github.com/xiaoye0714/xiaoye-shenqing-zhixing-skill/releases/tag/v1.0.1)：新增撤销暨变更授权委托书、个体工商户材料、送达确认书专项校验与单位被执行人地址修正

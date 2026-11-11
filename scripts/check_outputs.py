@@ -260,7 +260,7 @@ def check(path, avoid):
             detail = "、".join(f"{size:g}磅{'加粗' if bold else '常规'}" for size, bold in sorted(id_styles))
             msgs.append(f"10表各被执行人证件号码字号/字重不一致：{detail}")
 
-    if path.name.startswith("03_撤销暨变更授权委托书"):
+    if path.name.startswith("03") and "撤销" in path.name and "授权" in path.name:
         ps = d.paragraphs
         for heading in ("变更后的受委托人一", "变更后的受委托人二"):
             hi = next((i for i, p in enumerate(ps) if p.text.startswith(heading)), None)
@@ -314,7 +314,7 @@ if __name__ == "__main__":
     )
     print(f"检查目录：{folder}")
     bad = 0
-    if not any(f.name.startswith("03_撤销暨变更授权委托书") for f in files):
+    if not any(f.name.startswith("03") and "撤销" in f.name and "授权" in f.name for f in files):
         print("  缺少    03_撤销暨变更授权委托书_申请人.docx（所有法院均须提交）")
         bad += 1
     for f in files:
