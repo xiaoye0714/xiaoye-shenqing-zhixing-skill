@@ -23,6 +23,7 @@ import shutil
 from decimal import Decimal, InvalidOperation
 
 from docx import Document
+from docx.enum.text import WD_BREAK
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.text.paragraph import Paragraph
@@ -575,7 +576,6 @@ def build_01():
         prev = before
     court_el = copy.deepcopy(p_cizhi._p)
     p_cizhi._p.addnext(court_el)
-    from docx.text.paragraph import Paragraph
     p_court = Paragraph(court_el, p_cizhi._parent)
     set_segments(p_court, [(COURT_SHORT, None, None)])
     p_court.paragraph_format.page_break_before = False
@@ -584,7 +584,11 @@ def build_01():
         _ind = _ppr.find(qn("w:ind"))
         if _ind is not None:
             _ppr.remove(_ind)
-    p_cizhi.paragraph_format.page_break_before = True
+    # 分页符独立于可编辑的落款段，避免回车继承段前分页。
+    page_marker = p_cizhi.insert_paragraph_before()
+    page_marker.paragraph_format.page_break_before = False
+    page_marker.paragraph_format.keep_with_next = False
+    page_marker.add_run().add_break(WD_BREAK.PAGE)
     p_sign = find_para(doc, lambda t: t.strip() == "申请执行人：", "落款申请执行人")
     set_segments(p_sign, [("申请执行人：", None, None)])
     set_first_line_chars(p_sign, 9)
@@ -593,10 +597,10 @@ def build_01():
     set_spacing(doc, 500)
     p_total.paragraph_format.keep_together = True
     p_total.paragraph_format.keep_with_next = False
-    # 落款已由“此致”段前分页固定到末页；暂合计不能再 keep_with_next，
-    # 否则 Word/WPS 会把它一起带到新页，并在段前分页后再多出一张空白页。
+    # 暂合计与独立分页符之间不使用 keep_with_next。
     tail = tail_from(doc, "此致")
     for i, p in enumerate(tail):
+        p.paragraph_format.page_break_before = False
         p.paragraph_format.keep_together = True
         if i < len(tail) - 1:
             p.paragraph_format.keep_with_next = True

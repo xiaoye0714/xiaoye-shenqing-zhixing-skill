@@ -299,7 +299,10 @@ def check(path, avoid):
     i_sum = next((i for i, q in enumerate(ps) if q.text.startswith("（以上各项暂合计")), None)
     i_zhi = next((i for i, q in enumerate(ps) if q.text.startswith("此致")), None)
     if i_sum is not None and i_zhi is not None:
-        empty = sum(1 for q in ps[i_sum + 1 : i_zhi] if not q.text.strip())
+        empty = sum(
+            1 for q in ps[i_sum + 1 : i_zhi]
+            if not q.text.strip() and not q._p.xpath('.//w:br[@w:type="page"]')
+        )
         if empty:
             msgs.append(f"落款前多余空段 {empty} 个")
 
